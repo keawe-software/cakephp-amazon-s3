@@ -14,39 +14,20 @@ A CakePHP Plugin to interact with Amazon Web Services S3 objects. This plugin pr
 
 ### Installation
 
-_[Manual]_
-
-* Download this: [http://github.com/robmcvey/cakephp-amazon-s3/zipball/master](http://github.com/robmcvey/cakephp-amazon-s3/zipball/master)
-* Unzip that download.
-* Copy the resulting folder to `app/Plugin`
-* Rename the folder you just copied to `AmazonS3`
-
-_[GIT Submodule]_
-
-In your app directory type:
+_[Composer]_
 
 ```shell
-git submodule add -b master git://github.com/robmcvey/cakephp-amazon-s3.git Plugin/AmazonS3
-git submodule init
-git submodule update
-```
-
-_[GIT Clone]_
-
-In your `Plugin` directory type:
-
-```shell
-git clone -b master git://github.com/robmcvey/cakephp-amazon-s3.git AmazonS3
+required: "tabenguyen/cakephp-amazon-s3": "dev-master"
 ```
 
 ### Usuage examples
 
-Remember to add `CakePlugin::load('AmazonS3');` to your app's bootstrap file. 
+Remember to add `CakePlugin::load('CakephpAmazonS3');` to your app's bootstrap file. 
 
 Then, simply initialise the plugin with your AWS Access key, secret key and the bucket name you wish to work with.
 
 ```php
-App::uses('AmazonS3', 'AmazonS3.Lib');
+App::uses('AmazonS3', 'CakephpAmazonS3.Lib');
 $AmazonS3 = new AmazonS3(array('{access key}', '{secret key}', '{bucket name}'));
 ```
 
