@@ -1,0 +1,18 @@
+{
+	"name": "tabenguyen/cakephp-amazon-s3",
+	"description": "Cakephp Amazon S3 - Composer version for robmcvey/cakephp-amazon-s3",
+	"type": "cakephp-plugin",
+	"keywords": ["cakephp", "acl"],
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Tabe Nguyen",
+			"homepage": "http://pl.mangoads.vn",
+			"role": "Author"
+		}
+	],
+	"require": {
+		"php": ">=5.2.17",
+		"composer/installers": "*"
+	}
+}
