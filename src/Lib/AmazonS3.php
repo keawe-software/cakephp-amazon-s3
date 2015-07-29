@@ -10,11 +10,15 @@
  * @link          www.copify.com
  * @license       MIT License (http://www.opensource.org/licenses/mit-license.php)
  */
-App::uses('HttpSocket', 'Network/Http');
-App::uses('File', 'Utility');
-App::uses('Xml', 'Utility');
+namespace AmazonS3\Lib;
 
-class AmazonS3Exception extends CakeException {}
+use \InvalidArgumentException;
+use Cake\Core\Exception\Exception;
+use Cake\Filesystem\File;
+use Cake\Network\Exception\SocketException;
+use Cake\Network\Http\Client;
+
+class AmazonS3Exception extends Exception {}
 
 class AmazonS3 {
 		
@@ -85,8 +89,8 @@ class AmazonS3 {
 	public $date = null;
 
 /**
- * HttpSocket class
- * @var HttpSocket
+ * Client class
+ * @var \Cake\Network\Http\Client
  */	
 	public $HttpSocket = null;
 
@@ -136,7 +140,7 @@ class AmazonS3 {
 				'host' => $this->bucket . '.' . $this->endpoint,
 				'path' => $this->file,
 			),
-			'header' => array(
+			'headers' => array(
 				'Accept' => '*/*',
 				'User-Agent' => 'CakePHP',
 				'Date' => $this->date,
@@ -179,7 +183,7 @@ class AmazonS3 {
 				'host' => $this->bucket . '.' . $this->endpoint,
 				'path' => $this->file,
 			),
-			'header' => array(
+			'headers' => array(
 				'Accept' => '*/*',
 				'User-Agent' => 'CakePHP',
 				'Date' => $this->date,
@@ -194,7 +198,7 @@ class AmazonS3 {
 		$this->handleResponse($response);
 
 		// Write file locally
-		$this->File = new File($this->localPath . DS . $this->file, true);	
+		$this->File = new File($this->localPath . DS . $this->file, true);
 		$this->File->write($response->body);
 	}
 	
@@ -218,7 +222,7 @@ class AmazonS3 {
 				'host' => $this->bucket . '.' . $this->endpoint,
 				'path' => $this->file,
 			),
-			'header' => array(
+			'headers' => array(
 				'Accept' => '*/*',
 				'User-Agent' => 'CakePHP',
 				'Date' => $this->date,
@@ -266,19 +270,34 @@ class AmazonS3 {
 /**
  * Makes the HTTP Rest request
  *
- * @return void
+ * @return void|mixed
  * @author Rob Mcvey
  **/
 	public function handleRequest($request) {
 		// HttpSocket. 
 		if (!$this->HttpSocket) {
-			$this->HttpSocket = new HttpSocket();
-			$this->HttpSocket->quirksMode = true; // Amazon returns sucky XML
+			$this->HttpSocket = new Client();
+			//$this->HttpSocket->quirksMode = true; // Amazon returns sucky XML
 		}
 		
 		// Make request
 		try {
-			return $this->HttpSocket->request($request);
+            $url = $request['uri']['scheme'] . '://' . $request['uri']['host'] . '/' . ltrim($request['uri']['path'], '/');
+
+            $options = [
+                'headers' => $request['headers']
+            ];
+
+            switch ($request['method']) {
+                case 'GET' :
+                    return $this->HttpSocket->get($url, [], $options);
+                case 'DELETE' :
+                    return $this->HttpSocket->delete($url, [], $options);
+                case 'PUT' :
+                    $options['body'] = $request['body'];
+                    return $this->HttpSocket->put($url, [], $options);
+            }
+            throw new SocketException();
 		} catch (SocketException $e) {
 			// If error Amazon returns garbage XML and 
 			// throws HttpSocket::_decodeChunkedBody - Could not parse malformed chunk ???
@@ -289,7 +308,7 @@ class AmazonS3 {
 /**
  * Handles the HttpSocket response object and checks for any errors
  *
- * @return void
+ * @return void|mixed
  * @author Rob Mcvey
  **/
 	public function handleResponse($response) {
@@ -363,7 +382,7 @@ class AmazonS3 {
 /**
  * Creates the Authorization header string to sign
  *
- * @return void
+ * @return string
  * @author Rob Mcvey
  **/
 	public function stringToSign($method = 'get') {
@@ -391,13 +410,13 @@ class AmazonS3 {
 /**
  * Takes the request array pre-put and adds any additional amazon headers
  *
- * @return void
+ * @return void|mixed
  * @author Rob Mcvey
  **/
 	public function addAmazonHeadersToRequest($request) {
 		if (!empty($this->amazonHeaders) && is_array($this->amazonHeaders)) {
 			foreach ($this->amazonHeaders as $k => $header) {
-				$request['header'][$k] =$header; 
+				$request['header'][$k]=$header;
 			}
 		}
 		return $request;

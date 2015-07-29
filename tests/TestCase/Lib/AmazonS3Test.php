@@ -10,12 +10,15 @@
  * @link          www.copify.com
  * @license       MIT License (http://www.opensource.org/licenses/mit-license.php)
  */
-App::uses('AmazonS3', 'AmazonS3.Lib');
+namespace AmazonS3\Test\TestCase\Lib;
+
+use AmazonS3\Lib\AmazonS3;
+use Cake\TestSuite\TestCase;
 
 /**
  * PaypalTest class
  */
-class AmazonS3TestCase extends CakeTestCase {
+class AmazonS3TestCase extends TestCase {
 
 /**
  * AmazonS3 class

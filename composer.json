@@ -1,5 +1,5 @@
 {
-	"name": "tabenguyen/cakephp-amazon-s3",
+	"name": "okatsuralau/cakephp-amazon-s3",
 	"description": "Cakephp Amazon S3 - Composer version for robmcvey/cakephp-amazon-s3",
 	"type": "cakephp-plugin",
 	"keywords": ["cakephp", "acl"],
@@ -12,7 +12,15 @@
 		}
 	],
 	"require": {
-		"php": ">=5.2.17",
-		"composer/installers": "*"
+		"php": ">=5.4",
+        "cakephp/cakephp": "~3.0"
+	},
+    "autoload": {
+        "psr-4": {
+            "AmazonS3\\": "src"
+        }
+    },
+	"extra": {
+		"installer-name": "AmazonS3"
 	}
 }
