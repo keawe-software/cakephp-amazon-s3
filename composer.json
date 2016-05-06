@@ -2,18 +2,19 @@
 	"name": "okatsuralau/cakephp-amazon-s3",
 	"description": "Cakephp Amazon S3 - Composer version for robmcvey/cakephp-amazon-s3",
 	"type": "cakephp-plugin",
-	"keywords": ["cakephp", "acl"],
+	"keywords": ["cakephp", "amazon", "s3"],
 	"license": "MIT",
 	"authors": [
 		{
-			"name": "Tabe Nguyen",
-			"homepage": "http://pl.mangoads.vn",
+			"name": "Gabriel Lau",
+			"homepage": "http://github.com/okatsuralau",
 			"role": "Author"
 		}
 	],
 	"require": {
 		"php": ">=5.4",
-        "cakephp/cakephp": "~3.0"
+        "cakephp/cakephp": "~3.0",
+		"aws/aws-sdk-php": "^3.18"
 	},
     "autoload": {
         "psr-4": {
