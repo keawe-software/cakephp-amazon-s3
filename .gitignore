@@ -1,0 +1,7 @@
+### JetBrains template
+.idea/
+
+### CakePHP template
+# CakePHP 3
+
+/vendor/*
