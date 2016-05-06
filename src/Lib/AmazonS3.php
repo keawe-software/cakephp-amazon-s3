@@ -1,472 +1,248 @@
 <?php
-/**
- * AmazonS3.php
- * Created by Rob Mcvey on 2013-09-22.
- *
- * Licensed under The MIT License
- * Redistributions of files must retain the above copyright notice
- *
- * @copyright     Rob Mcvey on 2013-09-22..
- * @link          www.copify.com
- * @license       MIT License (http://www.opensource.org/licenses/mit-license.php)
- */
-namespace AmazonS3\Lib;
+    namespace AmazonS3\Lib;
 
-use \InvalidArgumentException;
-use Cake\Core\Exception\Exception;
-use Cake\Filesystem\File;
-use Cake\Network\Exception\SocketException;
-use Cake\Network\Http\Client;
+    use Aws\Credentials\Credentials;
+    use Aws\S3\S3Client;
+    use Cake\Core\Exception\Exception;
+    use Cake\Core\InstanceConfigTrait;
+    use Cake\Filesystem\File;
+    use InvalidArgumentException;
 
-class AmazonS3Exception extends Exception {}
+    class AmazonS3Exception extends Exception {
+    }
 
-class AmazonS3 {
-		
-/**
- * Your Amazon S3 access key
- * @var string
- */
-	public $accessKey = '';
-	
-/**
- * Your Amazon S3 secret key
- * @var string
- */
-	public $secretKey = '';
-		
-/**
- * The current S3 bucket to perform an action on
- * @var string
- */
-	public $bucket = 'mybucket';
-	
-/**
- * Amazon S3 endpoint
- * @var string
- */
-	public $endpoint = 's3.amazonaws.com';	
+    class AmazonS3 {
 
-/**
- * Absolute path to ur local file
- * @var string
- */	
-	public $localPath = '';
+        use InstanceConfigTrait;
 
-/**
- * Array of information about our local file
- * @var array
- */			
-	public $info = array();
+        protected $_defaultConfig = [
+            'version' => 'latest',
+            'region'  => 'sa-east-1',
+            'http'    => [
+                'verify' => false
+            ]
+        ];
 
-/**
- * Header Content-Type
- * @var string
- */
-	public $contentType = '';
+        /**
+         * Your Amazon S3 SDK client
+         *
+         * @var string
+         */
+        public $S3Client = '';
 
-/**
- * MD5 checksum of our local file
- * @var string
- */	
-	public $contentMd5 = '';
+        /**
+         * Amazon S3 endpoint
+         *
+         * @var string
+         */
+        public $endpoint = 's3.amazonaws.com';
 
-/**
- * Additional amazon specific headers e.g. x-amz-acl:public-read
- * @var string
- */	
-	public $canonicalizedAmzHeaders = '';
+        /**
+         * Absolute path to ur local file
+         *
+         * @var string
+         */
+        public $localPath = '';
 
-/**
- * Array of additional amazon headers to pass
- * @var array
- */	
-	public $amazonHeaders = array();
+        /**
+         * Array of information about our local file
+         *
+         * @var array
+         */
+        public $info = [];
 
-/**
- * Current date in format Tue, 27 Mar 2007 21:15:45 +0000
- * @var array
- */	
-	public $date = null;
+        /**
+         * File class
+         *
+         * @var File
+         */
+        public $File;
 
-/**
- * Client class
- * @var \Cake\Network\Http\Client
- */	
-	public $HttpSocket = null;
+        /**
+         * Full path of the file to be added to the bucket
+         *
+         * @var string
+         */
+        public $file;
 
-/**
- * File class
- * @var File
- */	
-	public $File;
+        /**
+         * Constructor
+         *
+         * @param array $config Config array in format array('accessKey' => {accessKey} ,
+         *                      'secretKey' => {secretKey},
+         *                      'bucket' => {bucket})
+         *
+         * @return void
+         * @throws \Cake\Core\Exception\Exception
+         * @author Rob Mcvey
+         **/
+        public function __construct(array $config) {
+            $this->config($config);
 
-/**
- * Constructor
- *
- * @param array Config array in format array({accessKey} , {secretKey}, {bucket})
- * @return void
- * @author Rob Mcvey
- **/
-	public function __construct($config) {
-		list($this->accessKey, $this->secretKey, $this->bucket) = $config;
-		// Set current date 
-		$this->setDate();
-	}
-	
-/**
- * Put a local file in an S3 bucket
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function put($localPath , $remoteDir = null) {
+            $this->config(
+                'credentials',
+                new Credentials(
+                    $this->config('accessKey'), $this->config('secretKey')
+                )
+            );
 
-		// Base filename
-		$file = basename($localPath);
+            $this->_configDelete('accessKey');
+            $this->_configDelete('secretKey');
 
-		// File remote/local files
-		$this->checkLocalPath($localPath);
-		$this->checkFile($file);
-		$this->checkRemoteDir($remoteDir);
-		
-		// Signature
-		$stringToSign = $this->stringToSign('put');
+            $this->S3Client = new S3Client($this->config());
+        }
 
-		// Build the HTTP request
-		$request = array(
-			'method' => 'PUT',
-			'uri' => array(
-				'scheme' => 'https',
-				'host' => $this->bucket . '.' . $this->endpoint,
-				'path' => $this->file,
-			),
-			'headers' => array(
-				'Accept' => '*/*',
-				'User-Agent' => 'CakePHP',
-				'Date' => $this->date,
-				'Authorization' => 'AWS ' . $this->accessKey . ':' . $this->signature($stringToSign),
-				'Content-MD5' => $this->contentMd5,
-				'Content-Type' => $this->contentType,
-				'Content-Length' => $this->File->size()
-			),
-			'body' => $this->File->read()
-		);
-		
-		// Any addional Amazon headers to add?
-		$request = $this->addAmazonHeadersToRequest($request);
+        /**
+         * Put a local file in an S3 bucket
+         *
+         * @param      $localPath
+         * @param null $remoteDir
+         *
+         * @return string Public Url of the uploaded file
+         * @throws \Cake\Core\Exception\Exception
+         * @throws \InvalidArgumentException
+         */
+        public function put($localPath, $remoteDir = null) {
+            // Base filename
+            $filename = basename($localPath);
 
-		// Make the HTTP request
-		$response = $this->handleRequest($request);
+            // File remote/local files
+            $this->checkLocalPath($localPath);
+            $this->checkFile($filename);
 
-		// Handle response errors if any
-		$this->handleResponse($response);
-	}	
+            // Set the target and local path to where we're saving
+            $this->file = $filename;
 
-/**
- * Fetch a remote file from S3 and save locally
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function get($file , $localPath) {
-		// File remote/local files
-		$this->checkFile($file);
-		$this->checkLocalPath($localPath);
-		
-		// Signature
-		$stringToSign = $this->stringToSign('get');
+            $this->checkRemoteDir($remoteDir);
+            $this->getLocalFileInfo();
 
-		$request = array(
-			'method' => 'GET',
-			'uri' => array(
-				'scheme' => 'https',
-				'host' => $this->bucket . '.' . $this->endpoint,
-				'path' => $this->file,
-			),
-			'headers' => array(
-				'Accept' => '*/*',
-				'User-Agent' => 'CakePHP',
-				'Date' => $this->date,
-				'Authorization' => 'AWS ' . $this->accessKey . ':' . $this->signature($stringToSign)
-			)
-		);
+            // Build the HTTP request
+            $this->S3Client->putObject(
+                [
+                    'Bucket'      => $this->config('bucket'),
+                    'Key'         => $this->file,
+                    'Body'        => $this->File->read(),
+                    'ContentType' => $this->File->mime(), // prevents downloading the file by force
+                    'ACL'         => 'public-read'
+                ]
+            );
+        }
 
-		// Make the HTTP request
-		$response = $this->handleRequest($request);
-		
-		// Handle response errors if any
-		$this->handleResponse($response);
+        /**
+         * Fetch a remote file from S3 and save locally
+         *
+         * @param string $remoteFile
+         * @param string $localPath
+         */
+        public function get($remoteFile, $localPath) {
+            $this->checkFile($remoteFile);
 
-		// Write file locally
-		$this->File = new File($this->localPath . DS . $this->file, true);
-		$this->File->write($response->body);
-	}
-	
-/**
- * Delete a remote file from S3
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function delete($file) {
-		// File remote/local files
-		$this->checkFile($file);
-
-		// Signature
-		$stringToSign = $this->stringToSign('delete');
-
-		$request = array(
-			'method' => 'DELETE',
-			'uri' => array(
-				'scheme' => 'https',
-				'host' => $this->bucket . '.' . $this->endpoint,
-				'path' => $this->file,
-			),
-			'headers' => array(
-				'Accept' => '*/*',
-				'User-Agent' => 'CakePHP',
-				'Date' => $this->date,
-				'Authorization' => 'AWS ' . $this->accessKey . ':' . $this->signature($stringToSign)
-			)
-		);
-		
-		// Make the HTTP request
-		$response = $this->handleRequest($request);
-
-		// Handle response errors if any
-		$this->handleResponse($response);
-	}	
-	
-/**
- * Sets the date we're working with. Used in both HTTP request and signature.
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function setDate($date = null) {
-		if (!$date) {
-			$this->date = gmdate('D, d M Y H:i:s \G\M\T');
-		} else {
-			$this->date = $date;
-		}
-	}
-
-/**
- * Returns the public URL of a file
- *
- * @return string
- * @author Rob Mcvey
- **/
-	public function publicUrl($file, $ssl = false) {
-		$scheme = 'http';
-		if ($ssl) {
-			$scheme .= 's';
-		}
-		// Replace any preceeding slashes
-		$file = preg_replace("/^\//" , '', $file);
-		return sprintf('%s://%s.s3.amazonaws.com/%s' , $scheme , $this->bucket, $file);
-	}	
-
-/**
- * Makes the HTTP Rest request
- *
- * @return void|mixed
- * @author Rob Mcvey
- **/
-	public function handleRequest($request) {
-		// HttpSocket. 
-		if (!$this->HttpSocket) {
-			$this->HttpSocket = new Client();
-			//$this->HttpSocket->quirksMode = true; // Amazon returns sucky XML
-		}
-		
-		// Make request
-		try {
-            $url = $request['uri']['scheme'] . '://' . $request['uri']['host'] . '/' . ltrim($request['uri']['path'], '/');
-
-            $options = [
-                'headers' => $request['headers']
-            ];
-
-            switch ($request['method']) {
-                case 'GET' :
-                    return $this->HttpSocket->get($url, [], $options);
-                case 'DELETE' :
-                    return $this->HttpSocket->delete($url, [], $options);
-                case 'PUT' :
-                    $options['body'] = $request['body'];
-                    return $this->HttpSocket->put($url, [], $options);
+            if (empty($localPath)) {
+                throw new InvalidArgumentException(__('You must set a localPath (i.e where to save the file)'));
             }
-            throw new SocketException();
-		} catch (SocketException $e) {
-			// If error Amazon returns garbage XML and 
-			// throws HttpSocket::_decodeChunkedBody - Could not parse malformed chunk ???
-			throw new AmazonS3Exception(__('Could not complete the HTTP request'));
-		}
-	}
-	
-/**
- * Handles the HttpSocket response object and checks for any errors
- *
- * @return void|mixed
- * @author Rob Mcvey
- **/
-	public function handleResponse($response) {
-		if (!property_exists($response , 'code')) {
-			throw new InvalidArgumentException(__('The response from Amazon S3 is invalid'));
-		}
-		// All good
-		if (in_array($response->code, array(200, 204))) {
-			return $response->code;
-		} else {
-			$headers = $response->headers;
-			$genericMessage = __('There was an error communicating with AWS');
-			if (isset($headers['Content-Type']) && $headers['Content-Type'] == 'application/xml') {
-				$xml = $response->body;
-				$Xml = Xml::build($xml);
-				if (property_exists($Xml, 'Message')) {
-					throw new AmazonS3Exception($Xml->Message);
-				} else {
-					throw new AmazonS3Exception($genericMessage);
-				}
-			} else {
-				throw new AmazonS3Exception($genericMessage);
-			}
-		}
-	}
 
-/**
- * Check we have a file string
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function checkFile($file) {
-		$this->file = $file;
-		// Set the target and local path to where we're saving
-		if (empty($this->file)) {
-			throw new InvalidArgumentException(__('You must specify the file you are fetching (e.g remote_dir/file.txt)'));
-		}
-	}
-	
-/**
- * Check our local path
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function checkLocalPath($localPath) {
-		$this->localPath = $localPath;
-		if (empty($this->localPath)) {
-			throw new InvalidArgumentException(__('You must set a localPath (i.e where to save the file)'));
-		}
-		if (!file_exists($this->localPath)) {
-			throw new InvalidArgumentException(__('The localPath you set does not exist'));
-		}
-	}
-	
-/**
- * Removes preceeding/trailing slashes from a remote dir target and builds $this->file again
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function checkRemoteDir($remoteDir) {
-		// Is the target a directory? Remove preceending and trailing /				
-		if ($remoteDir) {
-			$remoteDir = preg_replace(array("/^\//", "/\/$/") , "", $remoteDir);
-			$this->file = $remoteDir . '/' . $this->file;
-		}
-	}
+            $response = $this->S3Client->getObject(
+                [
+                    'Bucket' => $this->config('bucket'),
+                    'Key'    => $remoteFile
+                ]
+            );
 
-/**
- * Creates the Authorization header string to sign
- *
- * @return string
- * @author Rob Mcvey
- **/
-	public function stringToSign($method = 'get') {
-		
-		// PUT object, need hash and content type
-		if (strtoupper($method) == 'PUT') {
-			$this->getLocalFileInfo();
-			$this->contentType = $this->info['mime'];
-			$this->contentMd5 = $this->getContentMd5();
-		}
+            // Write file locally
+            $this->File = new File($localPath . DS . $remoteFile, true);
+            $this->File->write($response['Body']);
+        }
 
-		// Add any additional Amazon specific headers if present
-		$this->buildAmazonHeaders();
-		
-		// stringToSign
-		$toSign = strtoupper($method) . "\n";
-		$toSign .= $this->contentMd5 . "\n";
-		$toSign .= $this->contentType . "\n";
-		$toSign .= $this->date . "\n";
-		$toSign .= $this->canonicalizedAmzHeaders;
-		$toSign .= '/' . $this->bucket . '/' . $this->file;
-		return $toSign;
-	}
-	
-/**
- * Takes the request array pre-put and adds any additional amazon headers
- *
- * @return void|mixed
- * @author Rob Mcvey
- **/
-	public function addAmazonHeadersToRequest($request) {
-		if (!empty($this->amazonHeaders) && is_array($this->amazonHeaders)) {
-			foreach ($this->amazonHeaders as $k => $header) {
-				$request['header'][$k]=$header;
-			}
-		}
-		return $request;
-	}	
-	
-/**
- * Add any additional Amazon specific headers if present
- *
- * @return void
- * @author Rob Mcvey
- **/
-	public function buildAmazonHeaders() {
-		if (!empty($this->amazonHeaders) && is_array($this->amazonHeaders)) {
-			foreach ($this->amazonHeaders as $k => $header) {
-				$this->canonicalizedAmzHeaders .= strtolower($k) . ":" . $header . "\n"; 
-			}
-		}
-	}
-	
-/**
- * Create signature for the Authorization header.
- * Format: Base64( HMAC-SHA1( YourSecretAccessKeyID, UTF-8-Encoding-Of( StringToSign ) ) );
- * @param string the header string to sign
- * @return string base64_encode encoded string
- * @link http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html
- */
-	public function signature($stringToSign) {
-		return base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true)); 
-	}	
+        /**
+         * Delete a remote file from S3
+         *
+         * @param $remoteFile
+         *
+         * TODO not working. The response is fine (204) but the file is not deleted
+         *
+         * @throws \Cake\Core\Exception\Exception
+         */
+        public function delete($remoteFile) {
+            $this->checkFile($remoteFile);
 
-/**
- * Get local file info (uses CakePHP Utility/File class)
- *
- * @return array
- * @author Rob Mcvey
- **/
-	public function getLocalFileInfo() {
-		$this->File = new File($this->localPath);
-		$this->info = $this->File->info();
-		return $this->info;
-	}
+            $this->S3Client->deleteObject(
+                [
+                    'Bucket' => $this->config('bucket'),
+                    'Key'    => $remoteFile
+                ]
+            );
+        }
 
-/**
- * Return base64 encoded file checksum
- *
- * @return string
- * @author Rob Mcvey
- **/
-	public function getContentMd5() {
-		return base64_encode(md5_file($this->localPath , true));
-	}	
-	
-}
+        /**
+         * Returns the public URL of a file
+         *
+         * @return string
+         * @author Rob Mcvey
+         */
+        public function publicUrl($file, $ssl = false) {
+            $scheme = 'http';
+            if ($ssl) {
+                $scheme .= 's';
+            }
+            // Replace any preceeding slashes
+            $file = preg_replace("/^\//", '', $file);
+
+            return sprintf('%s://%s.%s/%s', $scheme, $this->config('bucket'), $this->endpoint, $file);
+        }
+
+        /**
+         * Check we have a file string
+         *
+         * @return void
+         * @author Rob Mcvey
+         */
+        public function checkFile($file) {
+            if (empty($file)) {
+                throw new InvalidArgumentException(__('You must specify the file you are fetching (e.g remote_dir/file.txt)'));
+            }
+        }
+
+        /**
+         * Check our local path
+         *
+         * @param $localPath
+         *
+         * @throws \InvalidArgumentException
+         */
+        public function checkLocalPath($localPath) {
+            if (empty($localPath)) {
+                throw new InvalidArgumentException(__('You must set a localPath (i.e where to save the file)'));
+            }
+            if (!file_exists($localPath)) {
+                throw new InvalidArgumentException(__('The localPath you set does not exist'));
+            }
+
+            $this->localPath = $localPath;
+        }
+
+        /**
+         * Removes preceding/trailing slashes from a remote dir target and builds $this->file again
+         *
+         * @param $remoteDir
+         */
+        public function checkRemoteDir($remoteDir) {
+            // Is the target a directory? Remove preceending and trailing /
+            if ($remoteDir) {
+                $remoteDir = preg_replace(array("/^\//", "/\/$/"), "", $remoteDir);
+                $this->file = $remoteDir . '/' . $this->file;
+            }
+        }
+
+        /**
+         * Get local file info (uses CakePHP Utility/File class)
+         *
+         * @return array
+         * @author Rob Mcvey
+         **/
+        public function getLocalFileInfo() {
+            $this->File = new File($this->localPath);
+            $this->info = $this->File->info();
+
+            return $this->info;
+        }
+    }
