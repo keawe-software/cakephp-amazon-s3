@@ -129,6 +129,25 @@
         }
 
         /**
+         * Put a decoded base64 string in a S3 bucket
+         *
+         * @param $data
+         * @param $mimeType
+         * @param null $remoteDir
+         */
+        public function putBase64($data, $mimeType, $remoteDir = null){
+            $this->S3Client->putObject(
+                [
+                    'Bucket'      => $this->config('bucket'),
+                    'Key'         => $remoteDir,
+                    'Body'        => $data,
+                    'ContentType' => $mimeType. ';base64',
+                    'ACL'         => 'public-read'
+                ]
+            );
+        }
+
+        /**
          * Fetch a remote file from S3 and save locally
          *
          * @param string $remoteFile
